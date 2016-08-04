@@ -1,0 +1,22 @@
+Businesses json
+    uuid     Text
+    name     Text
+    address  Text
+    address2 Text Maybe
+    city     Text
+    state    Text
+    zip      Text
+    country  Text
+    phone    Text
+    website  Text
+    created_at UTCTime
+
+Pagination json
+    bid   BusinessesId Eq
+    self  BusinessesId
+    first BusinessesId
+    prev  BusinessesId 
+    next  BusinessesId
+    last  BusinessesId
+    UniqueBusinessesId bid
+    
