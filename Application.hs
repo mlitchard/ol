@@ -18,7 +18,8 @@ import Database.Persist.Postgresql          ( withPostgresqlPool
                                             , runSqlPersistMPool
                                             , createPostgresqlPool
                                             , pgConnStr, pgPoolSize, runSqlPool)
-import Import hiding (unlines,unpack,pack) 
+import Database.Persist.Sql (toSqlKey,fromSqlKey)
+import Import hiding (unlines,unpack,pack,first,toInteger) 
 import Data.Text hiding (lines,length) -- (splitOn)
 import Text.Read (readEither)
 -- import System.IO (readFile)
@@ -42,7 +43,10 @@ import Control.Monad.Logger (runStdoutLoggingT)
 import Handler.ListBusinesses
 import Handler.Business
 
-data AppKey = Business | Paginate deriving Show
+type FirstKey    = (Key Businesses)
+type BusinessKey = (Key Businesses)
+type PrevKey     = Maybe (Key Businesses)
+
 -- This line actually creates our YesodDispatch instance. It is the second half
 -- of the call to mkYesodData which occurs in Foundation.hs. Please see the
 -- comments there for more details.
@@ -88,87 +92,103 @@ makeFoundation appSettings = do
 
 popDB :: AppSettings -> IO ()
 popDB appSettings = do
- first <- newEmptyMVar :: IO (MVar (Key Businesses))
- prev  <- newEmptyMVar :: IO (MVar (Key Businesses))
+ first <- newEmptyMVar :: IO (MVar FirstKey)
+ prev <- newEmptyMVar :: IO (MVar PrevKey)
 
  (_:b1:businesses) <- lines <$> readFile "engineering_project_businesses.csv"
  runStdoutLoggingT $ withPostgresqlPool connStr 10 $ \pool -> 
    liftIO $ flip runSqlPersistMPool pool $ do
-     processFile prev first b1
+     processFile first prev b1
 --     mapM_ (processFile (length $ unpack businesses)) businesses 
      return ()
--- where
-processFile :: MVar (Key Businesses) -> 
-               MVar (Key Businesses) ->
-               Text                  -> 
+  where
+    connStr = pgConnStr $ appDatabaseConf appSettings
+
+processFile :: MVar FirstKey -> 
+               MVar PrevKey  ->
+               Text          -> 
                ReaderT SqlBackend (NoLoggingT (ResourceT IO)) ()
-processFile prev first line = do
+processFile first prev line = do
   first_empty <- isEmptyMVar first
-  repsert (key Business) $ 
-    Businesses uuid name add madd2 city state zip' country phone website (unlines ca) 
+  repsert (business_key) $ 
+    Businesses uuid name add madd2 city state zip' country phone website uca 
   _ <- case first_empty of
          True  -> do 
-                   putMVar first 
-                   putMVar prev (key
-                   _ <- repsert (makeKey id') $ Pagination (makeKey id') (makeKey id') Nothing Nothing Nothing
+                   putMVar first business_key 
+                   putMVar prev  Nothing
+                   _ <- repsert pagination_key $ makePagination
                    return ()
          False -> do
-                   first' <- readMVar first
-                   prev'  <- readMVar prev
-                      
+                   first_key <- readMVar first
+                   prev_key  <- readMVar prev
+                   popNextField prev_key business_key
+                   -- ^ populate the next field of the previous entry
+--                   popPrevField prev_key business_key
+                   -- ^ populates the prev field of currrent entry
                    return ()
+  return ()
   where
-    key = makeKey (keyValue id')
-     
-     
---     let key@((PersistInt64 key_val):_) = keyToValues bid
---     let new_id = keyFromValues key :: Either Text (Key Businesses)
---     putStrLn ("file size is " ++ (pack $ show file_size))
---     putStrLn ("key is " ++ (pack $ show key_val))
-     return ()
- 
-{-  
-     putStrLn ("uuid is " ++ uuid)
-     putStrLn ("name is " ++ name)
-     putStrLn ("add is "  ++ add)
-     putStrLn ("add2 is " ++ add2)
-     putStrLn ("city is " ++ city)
-     putStrLn ("state is " ++ state)
-     putStrLn ("zip is " ++ zip)
-     putStrLn ("country is " ++ country)
-     putStrLn ("phone is " ++ phone)
-     putStrLn ("website is " ++ website)
-     putStrLn ("ca is " ++ (Import.unlines ca))
--}
-     where
-       (id':uuid:name:add:add2:city:state:zip':country:phone:website:ca) = 
-         splitOn "," line
-      
-       madd2 = case add2 of
-         "" -> Nothing
-         _  -> Just add2
-   connStr = pgConnStr $ appDatabaseConf appSettings
+    uca = unlines ca
+    (id':uuid:name:add:add2:city:state:zip':country:phone:website:ca) = 
+      splitOn "," line
+    business_key   = toSqlKey (keyValue id') :: Key Businesses
+    pagination_key = toSqlKey (keyValue id') :: Key Pagination
+    makePagination = 
+      Pagination business_key business_key Nothing Nothing Nothing
+    madd2 = case add2 of
+      "" -> Nothing
+      _  -> Just add2
+    
+popNextField :: PrevKey     ->
+                BusinessKey ->
+                ReaderT SqlBackend (NoLoggingT (ResourceT IO)) () 
+popNextField Nothing current_key = error err_msg
+  where 
+    current_id = show (fromSqlKey current_key)
+    err_msg    =
+      "Hard Fail: " ++ current_id ++
+      " failed to populate previous record's next field -- MVar empty"
+popNextField (Just prev_key) current_key = do
+  maybePaginateKey <- getBy $ UniqueBusinessesId prev_key
+  case (maybePaginateKey) of
+    Nothing -> error not_found
+    Just (Entity prev_key' _) -> 
+      update prev_key' [PaginationNext =. (Just current_key)] 
+  where
+    key_value = show (fromSqlKey prev_key)
+    not_found = 
+      "Hard Fail: " ++ key_value                ++ 
+      " failed to be found in Pagination table" ++
+      "while trying to populate next field"
 
-makeKey :: [PersistValue Int64] ->
-           AppKey               ->
-           Either (Key Paginator) (Key Businesses)
-makeKey key_value Business = key
+popPrevField :: PrevKey     ->
+                BusinessKey ->
+                ReaderT SqlBackend (NoLoggingT (ResourceT IO)) ()
+popPrevField Nothing current_key = error err_msg
   where
-    key       = 
-      case keyFromValues key_value :: Either Text (Key Businesses) of
-        (Left err) -> 
-          error ("Hard Fail: Failed to make " ++ (unpack err) ++ "into key")
-        (Right key') -> key'
-makeKey key_value Paginate = key
+    current_id = show (fromSqlKey current_key)
+    err_msg =
+      "Hard Fail: " ++ current_id ++
+      " failed to populate current record's previous field -- MVar empty"
+popPrevField (Just prev_key) current_key = do
+  maybePaginateKey <- getBy $ UniqueBusinessesId current_key
+  case (maybePaginateKey) of
+    Nothing -> error not_found
+    Just (Entity current_key' _) -> 
+      update current_key' [PaginationPrev =. (Just prev_key)]
   where
-    key       =
-      case keyFromValues key_value :: Either Text (Key Paginator) of
-        (Left err) ->
-          error ("Hard Fail: Failed to make " ++ (unpack err) ++ "into key")
-        (Right key') -> key'
+    key_value = show (fromSqlKey current_key)
+    not_found = 
+      "Hard Fail: " ++ key_value                ++ 
+      " failed to be found in Pagination table" ++
+      " while trying to populate previous field"
 
-keyValue :: Text -> [PersistValue Int64]
-keyValue str_int = [toPersistValue (fromIntegral toInteger :: Int64)]
+    
+    
+    
+    
+keyValue :: Text -> Int64
+keyValue str_int = fromIntegral toInteger :: Int64
   where
     toInteger =
       case (readEither (unpack str_int) :: Either String Integer) of
