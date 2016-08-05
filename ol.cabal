@@ -17,6 +17,7 @@ library
                      Foundation
                      Handler.ListBusinesses
                      Handler.Business
+                     Handler.LoadBusinesses
                      Import
                      Import.NoFoundation
                      Library.UUID
@@ -70,6 +71,7 @@ library
                  , monad-logger                  >= 0.3        && < 0.4
                  , fast-logger                   >= 2.2        && < 2.5
                  , wai-logger                    >= 2.2        && < 2.4
+                 , split                         == 0.2.3.1
                  , uuid
                  , file-embed
                  , safe

@@ -1,2 +1,2 @@
 /businesses ListBusinessesR GET
-/businesses/#BusinessesId BusinessR GET
+!/businesses/#BusinessesId BusinessR GET

@@ -9,14 +9,13 @@ Businesses json
     country  Text
     phone    Text
     website  Text
-    created_at UTCTime
+    created_at Text
 
 Pagination json
-    bid   BusinessesId Eq
-    self  BusinessesId
+    self  BusinessesId Eq
     first BusinessesId
-    prev  BusinessesId 
-    next  BusinessesId
-    last  BusinessesId
-    UniqueBusinessesId bid
+    prev  BusinessesId Maybe
+    next  BusinessesId Maybe
+    last  BusinessesId Maybe 
+    UniqueBusinessesId self
     

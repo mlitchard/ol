@@ -13,10 +13,16 @@ module Application
     , db
     ) where
 
-import Control.Monad.Logger                 (liftLoc, runLoggingT)
-import Database.Persist.Postgresql          (createPostgresqlPool, pgConnStr,
-                                             pgPoolSize, runSqlPool)
-import Import
+import Control.Monad.Logger                 (liftLoc, runLoggingT, NoLoggingT)
+import Database.Persist.Postgresql          ( withPostgresqlPool
+                                            , runSqlPersistMPool
+                                            , createPostgresqlPool
+                                            , pgConnStr, pgPoolSize, runSqlPool)
+import Import hiding (unlines,unpack,pack) 
+import Data.Text hiding (lines,length) -- (splitOn)
+import Text.Read (readEither)
+-- import System.IO (readFile)
+-- import Data.List.Split (splitOn)
 import Language.Haskell.TH.Syntax           (qLocation)
 import Network.Wai (Middleware)
 import Network.Wai.Handler.Warp             (Settings, defaultSettings,
@@ -30,10 +36,13 @@ import Network.Wai.Middleware.RequestLogger (Destination (Logger),
 import System.Log.FastLogger                (defaultBufSize, newStdoutLoggerSet,
                                              toLogStr)
 
+import Control.Monad.Logger (runStdoutLoggingT)
 -- Import all relevant handler modules here.
 -- Don't forget to add new modules to your cabal file!
 import Handler.ListBusinesses
 import Handler.Business
+
+data AppKey = Business | Paginate deriving Show
 -- This line actually creates our YesodDispatch instance. It is the second half
 -- of the call to mkYesodData which occurs in Foundation.hs. Please see the
 -- comments there for more details.
@@ -69,12 +78,103 @@ makeFoundation appSettings = do
 
     -- Perform database migration using our application's logging settings.
     runLoggingT (runSqlPool (runMigration migrateAll) pool) logFunc
-
+    popDB appSettings
     -- Return the foundation
     return $ mkFoundation pool
 
 -- | Convert our foundation to a WAI Application by calling @toWaiAppPlain@ and
 -- applying some additional middlewares.
+--
+
+popDB :: AppSettings -> IO ()
+popDB appSettings = do
+ first <- newEmptyMVar :: IO (MVar (Key Businesses))
+ prev  <- newEmptyMVar :: IO (MVar (Key Businesses))
+
+ (_:b1:businesses) <- lines <$> readFile "engineering_project_businesses.csv"
+ runStdoutLoggingT $ withPostgresqlPool connStr 10 $ \pool -> 
+   liftIO $ flip runSqlPersistMPool pool $ do
+     processFile prev first b1
+--     mapM_ (processFile (length $ unpack businesses)) businesses 
+     return ()
+-- where
+processFile :: MVar (Key Businesses) -> 
+               MVar (Key Businesses) ->
+               Text                  -> 
+               ReaderT SqlBackend (NoLoggingT (ResourceT IO)) ()
+processFile prev first line = do
+  first_empty <- isEmptyMVar first
+  repsert (key Business) $ 
+    Businesses uuid name add madd2 city state zip' country phone website (unlines ca) 
+  _ <- case first_empty of
+         True  -> do 
+                   putMVar first 
+                   putMVar prev (key
+                   _ <- repsert (makeKey id') $ Pagination (makeKey id') (makeKey id') Nothing Nothing Nothing
+                   return ()
+         False -> do
+                   first' <- readMVar first
+                   prev'  <- readMVar prev
+                      
+                   return ()
+  where
+    key = makeKey (keyValue id')
+     
+     
+--     let key@((PersistInt64 key_val):_) = keyToValues bid
+--     let new_id = keyFromValues key :: Either Text (Key Businesses)
+--     putStrLn ("file size is " ++ (pack $ show file_size))
+--     putStrLn ("key is " ++ (pack $ show key_val))
+     return ()
+ 
+{-  
+     putStrLn ("uuid is " ++ uuid)
+     putStrLn ("name is " ++ name)
+     putStrLn ("add is "  ++ add)
+     putStrLn ("add2 is " ++ add2)
+     putStrLn ("city is " ++ city)
+     putStrLn ("state is " ++ state)
+     putStrLn ("zip is " ++ zip)
+     putStrLn ("country is " ++ country)
+     putStrLn ("phone is " ++ phone)
+     putStrLn ("website is " ++ website)
+     putStrLn ("ca is " ++ (Import.unlines ca))
+-}
+     where
+       (id':uuid:name:add:add2:city:state:zip':country:phone:website:ca) = 
+         splitOn "," line
+      
+       madd2 = case add2 of
+         "" -> Nothing
+         _  -> Just add2
+   connStr = pgConnStr $ appDatabaseConf appSettings
+
+makeKey :: [PersistValue Int64] ->
+           AppKey               ->
+           Either (Key Paginator) (Key Businesses)
+makeKey key_value Business = key
+  where
+    key       = 
+      case keyFromValues key_value :: Either Text (Key Businesses) of
+        (Left err) -> 
+          error ("Hard Fail: Failed to make " ++ (unpack err) ++ "into key")
+        (Right key') -> key'
+makeKey key_value Paginate = key
+  where
+    key       =
+      case keyFromValues key_value :: Either Text (Key Paginator) of
+        (Left err) ->
+          error ("Hard Fail: Failed to make " ++ (unpack err) ++ "into key")
+        (Right key') -> key'
+
+keyValue :: Text -> [PersistValue Int64]
+keyValue str_int = [toPersistValue (fromIntegral toInteger :: Int64)]
+  where
+    toInteger =
+      case (readEither (unpack str_int) :: Either String Integer) of
+        (Left err_msg) -> error ("Hard Fail : " ++ err_msg)
+        (Right int)    -> int
+  
 makeApplication :: App -> IO Application
 makeApplication foundation = do
     logWare <- makeLogWare foundation
