@@ -72,6 +72,7 @@ library
                  , fast-logger                   >= 2.2        && < 2.5
                  , wai-logger                    >= 2.2        && < 2.4
                  , split                         == 0.2.3.1
+                 , utf8-string                   == 1.0.1.1
                  , uuid
                  , file-embed
                  , safe
@@ -81,6 +82,8 @@ library
                  , time
                  , case-insensitive
                  , wai
+                 , regex-posix
+                 , cassava
 
 executable         ol
     if flag(library-only)

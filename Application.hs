@@ -1,4 +1,5 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
+{-# LANGUAGE RecordWildCards, DeriveGeneric, OverloadedStrings, ViewPatterns, ScopedTypeVariables #-}
 module Application
     ( getApplicationDev
     , appMain
@@ -22,6 +23,11 @@ import Database.Persist.Sql (toSqlKey,fromSqlKey)
 import Import hiding (unlines,unpack,pack,first,toInteger) 
 import Data.Text hiding (lines,length) -- (splitOn)
 import Text.Read (readEither)
+import qualified Data.Vector as Vector
+
+import qualified Data.Csv as CSV
+import qualified Data.ByteString.Lazy as BS
+import qualified Data.ByteString.UTF8 as UTF8
 -- import System.IO (readFile)
 -- import Data.List.Split (splitOn)
 import Language.Haskell.TH.Syntax           (qLocation)
@@ -52,6 +58,10 @@ type PrevKey     = Maybe (Key Businesses)
 -- comments there for more details.
 mkYesodDispatch "App" resourcesApp
 
+instance CSV.FromRecord Businesses
+instance CSV.ToRecord Businesses
+-- instance FromNamedRecord Businesses where
+--    parseNamedRecord r = Person <$> r .: "" <*> r .: "salary"
 -- | This function allocates resources (such as a database connection pool),
 -- performs initialization and returns a foundation datatype value. This is also
 -- the place to put your migrate statements to have automatic database
@@ -95,10 +105,10 @@ popDB appSettings = do
  first <- newEmptyMVar :: IO (MVar FirstKey)
  prev <- newEmptyMVar :: IO (MVar PrevKey)
 
- (_:b1:businesses) <- lines <$> readFile "engineering_project_businesses.csv"
+ (_:businesses) <- lines <$> readFile "engineering_project_businesses.csv"
  runStdoutLoggingT $ withPostgresqlPool connStr 10 $ \pool -> 
    liftIO $ flip runSqlPersistMPool pool $ do
-     processFile first prev b1
+     mapM_ (processFile first prev) businesses
 --     mapM_ (processFile (length $ unpack businesses)) businesses 
      return ()
   where
@@ -108,37 +118,52 @@ processFile :: MVar FirstKey ->
                MVar PrevKey  ->
                Text          -> 
                ReaderT SqlBackend (NoLoggingT (ResourceT IO)) ()
-processFile first prev line = do
+processFile first prev b_record' = do
+  liftIO $ putStrLn ("b_record is " ++ (b_record))
   first_empty <- isEmptyMVar first
-  repsert (business_key) $ 
-    Businesses uuid name add madd2 city state zip' country phone website uca 
+  repsert (business_key) business 
   _ <- case first_empty of
-         True  -> do 
+         True  -> do
+                   liftIO $ putStrLn ("FIRST IS EMPTY") 
                    putMVar first business_key 
-                   putMVar prev  Nothing
-                   _ <- repsert pagination_key $ makePagination
+                   putMVar prev  (Just business_key)
+                   _ <- repsert pagination_key $ makePaginationFirst
                    return ()
          False -> do
+                   liftIO $ putStrLn ("FIRST SHOULD NOT BE EMPTY")
                    first_key <- readMVar first
+                   liftIO $ putStrLn ("id is " ++ id' ++ "first key is " ++ (pack (show first_key)))
                    prev_key  <- readMVar prev
+                   liftIO $ putStrLn ("prev_key is " ++ (pack (show prev_key)))
                    popNextField prev_key business_key
+                   _ <- repsert pagination_key $ makePagination first_key prev_key
                    -- ^ populate the next field of the previous entry
 --                   popPrevField prev_key business_key
                    -- ^ populates the prev field of currrent entry
+                   swapMVar prev (Just business_key)
                    return ()
+  liftIO $ putStrLn ("RESERT COMPLETED")
   return ()
   where
-    uca = unlines ca
-    (id':uuid:name:add:add2:city:state:zip':country:phone:website:ca) = 
-      splitOn "," line
+    (business:_) = makeBRecord (BS.fromStrict (UTF8.fromString (unpack b_record)))
+    (id',b_record_wcomma) = breakOn "," b_record'
+    b_record = Data.Text.drop 1 b_record_wcomma
     business_key   = toSqlKey (keyValue id') :: Key Businesses
     pagination_key = toSqlKey (keyValue id') :: Key Pagination
-    makePagination = 
+    makePagination first_key prev_key = 
+      Pagination business_key first_key prev_key Nothing Nothing 
+    makePaginationFirst = 
       Pagination business_key business_key Nothing Nothing Nothing
-    madd2 = case add2 of
-      "" -> Nothing
-      _  -> Just add2
-    
+--    madd2 = case add2 of
+--      "" -> Nothing
+--      _  -> Just add2
+
+makeBRecord :: BS.ByteString -> [Businesses]
+makeBRecord b_record = 
+  case (CSV.decode CSV.NoHeader b_record :: Either String (Vector Businesses)) of
+    Left err_msg -> error err_msg
+    Right b_record -> Vector.toList b_record
+  
 popNextField :: PrevKey     ->
                 BusinessKey ->
                 ReaderT SqlBackend (NoLoggingT (ResourceT IO)) () 
@@ -192,7 +217,7 @@ keyValue str_int = fromIntegral toInteger :: Int64
   where
     toInteger =
       case (readEither (unpack str_int) :: Either String Integer) of
-        (Left err_msg) -> error ("Hard Fail : " ++ err_msg)
+        (Left err_msg) -> error ("Hard Fail key value : " ++ " " ++ (unpack str_int) ++ err_msg)
         (Right int)    -> int
   
 makeApplication :: App -> IO Application

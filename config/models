@@ -10,6 +10,8 @@ Businesses json
     phone    Text
     website  Text
     created_at Text
+      deriving Generic
+      deriving Show
 
 Pagination json
     self  BusinessesId Eq
