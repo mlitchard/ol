@@ -96,67 +96,82 @@ makeFoundation appSettings = do
     -- Return the foundation
     return $ mkFoundation pool
 
--- | Convert our foundation to a WAI Application by calling @toWaiAppPlain@ and
--- applying some additional middlewares.
---
+-- | popDB - populates the ol database
+--   This is a two pass function
+--   Pass one uses two MVars to track (1) first id (2) previous id
+--   Pass two calculates length of [[Text]] to predict final id,
+--   then revisits each db entry and populates "last" field
+--   * This function assumes the csv file uses sequential non-negatives *
 
 popDB :: AppSettings -> IO ()
 popDB appSettings = do
  first <- newEmptyMVar :: IO (MVar FirstKey)
- prev <- newEmptyMVar :: IO (MVar PrevKey)
+ prev  <- newEmptyMVar :: IO (MVar PrevKey)
 
- (_:businesses) <- lines <$> readFile "engineering_project_businesses.csv"
+ (_:businesses) <- lines <$> readFile "engineering_project_businesses.csv" :: IO [Text]
  runStdoutLoggingT $ withPostgresqlPool connStr 10 $ \pool -> 
    liftIO $ flip runSqlPersistMPool pool $ do
-     mapM_ (processFile first prev) businesses
---     mapM_ (processFile (length $ unpack businesses)) businesses 
+--     keys' <- mapM (processFile first prev) businesses
+--     mapM_ (processFileLast (last_key keys')) keys'
      return ()
   where
-    connStr = pgConnStr $ appDatabaseConf appSettings
+    connStr  = pgConnStr $ appDatabaseConf appSettings
+    last_key :: [Key Pagination] -> Key Pagination
+    last_key keys = 
+      let (last_key:_) = Import.reverse keys -- FIXME - awful awful
+      in  last_key
 
 processFile :: MVar FirstKey -> 
                MVar PrevKey  ->
                Text          -> 
-               ReaderT SqlBackend (NoLoggingT (ResourceT IO)) ()
+               ReaderT SqlBackend (NoLoggingT (ResourceT IO)) (Key Pagination)
 processFile first prev b_record' = do
-  liftIO $ putStrLn ("b_record is " ++ (b_record))
   first_empty <- isEmptyMVar first
   repsert (business_key) business 
   _ <- case first_empty of
          True  -> do
-                   liftIO $ putStrLn ("FIRST IS EMPTY") 
                    putMVar first business_key 
                    putMVar prev  (Just business_key)
                    _ <- repsert pagination_key $ makePaginationFirst
                    return ()
          False -> do
-                   liftIO $ putStrLn ("FIRST SHOULD NOT BE EMPTY")
                    first_key <- readMVar first
-                   liftIO $ putStrLn ("id is " ++ id' ++ "first key is " ++ (pack (show first_key)))
                    prev_key  <- readMVar prev
-                   liftIO $ putStrLn ("prev_key is " ++ (pack (show prev_key)))
+                   _ <- repsert pagination_key $
+                        makePagination first_key prev_key
                    popNextField prev_key business_key
-                   _ <- repsert pagination_key $ makePagination first_key prev_key
-                   -- ^ populate the next field of the previous entry
---                   popPrevField prev_key business_key
-                   -- ^ populates the prev field of currrent entry
                    swapMVar prev (Just business_key)
                    return ()
-  liftIO $ putStrLn ("RESERT COMPLETED")
-  return ()
+  return (pagination_key)
   where
-    (business:_) = makeBRecord (BS.fromStrict (UTF8.fromString (unpack b_record)))
-    (id',b_record_wcomma) = breakOn "," b_record'
-    b_record = Data.Text.drop 1 b_record_wcomma
+    (business:_) = 
+      makeBRecord (BS.fromStrict (UTF8.fromString (unpack b_record')))
+    b_record@(id',_) = breakOn "," b_record'
+--    b_record = Data.Text.drop 1 b_record_wcomma
     business_key   = toSqlKey (keyValue id') :: Key Businesses
     pagination_key = toSqlKey (keyValue id') :: Key Pagination
     makePagination first_key prev_key = 
       Pagination business_key first_key prev_key Nothing Nothing 
     makePaginationFirst = 
       Pagination business_key business_key Nothing Nothing Nothing
---    madd2 = case add2 of
---      "" -> Nothing
---      _  -> Just add2
+
+processFileLast :: Key Pagination -> 
+                   Key Pagination ->
+                   ReaderT SqlBackend (NoLoggingT (ResourceT IO)) ()
+processFileLast last_key current_key = do
+  last_key_pagination' <- last_key_pagination
+  update current_key [PaginationLast =. (Just last_key_pagination')]
+  return ()
+  where
+    last_key_pagination = do
+      maybe_key <- get last_key
+      case (maybe_key) of
+        Just (Pagination self _ _ _ _) -> return self
+        Nothing                        -> error err_msg
+    err_msg = 
+      "Hard Fail: While trying to populate \"last\" field " ++
+      "failed to find " ++ (show last_key)   
+  
 
 makeBRecord :: BS.ByteString -> [Businesses]
 makeBRecord b_record = 
@@ -186,32 +201,6 @@ popNextField (Just prev_key) current_key = do
       " failed to be found in Pagination table" ++
       "while trying to populate next field"
 
-popPrevField :: PrevKey     ->
-                BusinessKey ->
-                ReaderT SqlBackend (NoLoggingT (ResourceT IO)) ()
-popPrevField Nothing current_key = error err_msg
-  where
-    current_id = show (fromSqlKey current_key)
-    err_msg =
-      "Hard Fail: " ++ current_id ++
-      " failed to populate current record's previous field -- MVar empty"
-popPrevField (Just prev_key) current_key = do
-  maybePaginateKey <- getBy $ UniqueBusinessesId current_key
-  case (maybePaginateKey) of
-    Nothing -> error not_found
-    Just (Entity current_key' _) -> 
-      update current_key' [PaginationPrev =. (Just prev_key)]
-  where
-    key_value = show (fromSqlKey current_key)
-    not_found = 
-      "Hard Fail: " ++ key_value                ++ 
-      " failed to be found in Pagination table" ++
-      " while trying to populate previous field"
-
-    
-    
-    
-    
 keyValue :: Text -> Int64
 keyValue str_int = fromIntegral toInteger :: Int64
   where

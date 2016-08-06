@@ -1,4 +1,5 @@
 Businesses json
+    id'      Text
     uuid     Text
     name     Text
     address  Text
