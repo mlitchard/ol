@@ -16,7 +16,7 @@ data LinkUrls = LinkUrls
 type Links = [(Int,LinkUrls)]
 
 getListBusinessesR :: Handler (Value)
-getListBusinessesR = do
+getListBusinessesR =  do
   (App app_settings _ _ _) <- getYesod
   page_number' <- lookupGetParams "page[number]"
   page_size'   <- lookupGetParams "page[size]"
@@ -26,8 +26,9 @@ getListBusinessesR = do
   liftIO $ putStrLn (" host is " ++ (pack $ show (host))) 
   -- ^^ Just "localhost:3000"
 
-  pages <- getPage (page_number page_number') (page_size page_size') 
-  returnJson pages
+  pages <- getPage (page_number page_number') (page_size page_size')
+  meta  <- getMeta (page_number page_number') (page_size page_size') host 
+  return $ object [("businesses" ,toJSON pages)]
   where
     page_number pn = case pn of
       []      -> error ("JSON error to be implemented")
@@ -36,29 +37,33 @@ getListBusinessesR = do
       []      -> error ("JSON error to be implemented")
       (ps':_) -> fromText ps'
       
-getPage :: Int64 -> Int64 -> Handler [Entity Businesses]
-getPage page_number page_size' = do
-  test <- 
+getPage :: Int -> Int -> Handler [Entity Businesses]
+getPage page_number page_size = do
+  page <- 
     runDB $ do selectList [BusinessesId' >=. first_key, BusinessesId' <=. last_key] [LimitTo page_size]
-  liftIO $ print test
-  liftIO $ mapM_ (writeFile "output.txt") $ map (show . toBusinesses) test
-  return test
+  return page
   where
-    first_key'  = ((page_number - 1) * page_size')
-    last_key'   = fromInteger (toInteger (first_key' + (page_size' - 1))) :: Int
-    page_size   = fromInteger (toInteger page_size') :: Int
-   
-    first_key   = pack (show first_key')
-    last_key    = pack (show last_key')
+    first_key = ((page_number - 1) * page_size) 
+    last_key  = (first_key + (page_size - 1))
     toBusinesses (Entity _ business) = business
 
-
+getMeta :: Int -> Int -> Maybe ByteString -> Handler () -- [Links]
+getMeta page_number page_size = do
+  meta <-
+    runDB $ do selectList [PaginationId >=. first_key, PaginationId <=. last_key] [LimitTo page_size]
+  return ()
+  where
+    first_key = ((page_number - 1) * page_size)  
+    last_key  = (first_key + (page_size - 1))
+     
 
 -- goes in own module
-fromText :: Text -> Int64
-fromText str_int = fromIntegral toInteger :: Int64
+fromText :: Text -> Int
+fromText str_int = toInteger :: Int
   where
     toInteger =
-      case (readEither (unpack str_int) :: Either String Integer) of
+      case (readEither (unpack str_int) :: Either String Int) of
         (Left err_msg) -> error ("Hard Fail key value : " ++ " " ++ (unpack str_int) ++ err_msg)
         (Right int)    -> int
+
+
