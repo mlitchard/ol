@@ -48,7 +48,7 @@ getListBusinessesR =  do
       []      -> error ("JSON error to be implemented")
       (pn':_) -> fromText pn'
     page_size ps   = case ps of
-      []      -> error ("JSON error to be implemented")
+      []      -> 50 :: Int
       (ps':_) -> fromText ps'
       
 getPage :: PageNumber -> PageSize -> Handler [Businesses]
