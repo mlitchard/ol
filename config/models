@@ -21,4 +21,3 @@ Pagination json
     next  BusinessesId Maybe
     last  BusinessesId Maybe 
     UniqueBusinessesId self
-    

@@ -60,9 +60,7 @@ mkYesodDispatch "App" resourcesApp
 
 instance CSV.FromRecord Businesses
 instance CSV.ToRecord Businesses
--- instance FromNamedRecord Businesses where
---    parseNamedRecord r = Person <$> r .: "" <*> r .: "salary"
--- | This function allocates resources (such as a database connection pool),
+-- | makeFoundation allocates resources (such as a database connection pool),
 -- performs initialization and returns a foundation datatype value. This is also
 -- the place to put your migrate statements to have automatic database
 -- migrations handled by Yesod.
@@ -147,7 +145,6 @@ processFile first prev b_record' = do
     (business:_) = 
       makeBRecord (BS.fromStrict (UTF8.fromString (unpack b_record')))
     b_record@(id',_) = breakOn "," b_record'
---    b_record = Data.Text.drop 1 b_record_wcomma
     business_key   = toSqlKey (keyValue id') :: Key Businesses
     pagination_key = toSqlKey (keyValue id') :: Key Pagination
     makePagination first_key prev_key = 
