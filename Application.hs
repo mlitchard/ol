@@ -14,20 +14,11 @@ module Application
     , db
     ) where
 
-import Control.Monad.Logger                 (liftLoc, runLoggingT, NoLoggingT)
-import Database.Persist.Postgresql          ( withPostgresqlPool
-                                            , runSqlPersistMPool
-                                            , createPostgresqlPool
+import Control.Monad.Logger                 ( liftLoc, runLoggingT)
+import Database.Persist.Postgresql          ( createPostgresqlPool
                                             , pgConnStr, pgPoolSize, runSqlPool)
-import Database.Persist.Sql (toSqlKey,fromSqlKey)
 import Import hiding (unlines,unpack,pack,first,toInteger) 
-import Data.Text hiding (lines,length) -- (splitOn)
-import Text.Read (readEither)
-import qualified Data.Vector as Vector
 
-import qualified Data.Csv as CSV
-import qualified Data.ByteString.Lazy as BS
-import qualified Data.ByteString.UTF8 as UTF8
 -- import System.IO (readFile)
 -- import Data.List.Split (splitOn)
 import Language.Haskell.TH.Syntax           (qLocation)
@@ -43,23 +34,17 @@ import Network.Wai.Middleware.RequestLogger (Destination (Logger),
 import System.Log.FastLogger                (defaultBufSize, newStdoutLoggerSet,
                                              toLogStr)
 
-import Control.Monad.Logger (runStdoutLoggingT)
 -- Import all relevant handler modules here.
 -- Don't forget to add new modules to your cabal file!
 import Handler.ListBusinesses
 import Handler.Business
-
-type FirstKey    = (Key Businesses)
-type BusinessKey = (Key Businesses)
-type PrevKey     = Maybe (Key Businesses)
+import Library.PopulateDB
 
 -- This line actually creates our YesodDispatch instance. It is the second half
 -- of the call to mkYesodData which occurs in Foundation.hs. Please see the
 -- comments there for more details.
 mkYesodDispatch "App" resourcesApp
 
-instance CSV.FromRecord Businesses
-instance CSV.ToRecord Businesses
 -- | makeFoundation allocates resources (such as a database connection pool),
 -- performs initialization and returns a foundation datatype value. This is also
 -- the place to put your migrate statements to have automatic database
@@ -94,118 +79,6 @@ makeFoundation appSettings = do
     -- Return the foundation
     return $ mkFoundation pool
 
--- | popDB - populates the ol database
---   This is a two pass function
---   Pass one uses two MVars to track (1) first id (2) previous id
---   Pass two calculates length of [[Text]] to predict final id,
---   then revisits each db entry and populates "last" field
---   * This function assumes the csv file uses sequential non-negatives *
-
-popDB :: AppSettings -> IO ()
-popDB appSettings = do
- first <- newEmptyMVar :: IO (MVar FirstKey)
- prev  <- newEmptyMVar :: IO (MVar PrevKey)
-
- (_:businesses) <- lines <$> readFile "engineering_project_businesses.csv" :: IO [Text]
- runStdoutLoggingT $ withPostgresqlPool connStr 10 $ \pool -> 
-   liftIO $ flip runSqlPersistMPool pool $ do
---     keys' <- mapM (processFile first prev) businesses
---     mapM_ (processFileLast (last_key keys')) keys'
-     return ()
-  where
-    connStr  = pgConnStr $ appDatabaseConf appSettings
-    last_key :: [Key Pagination] -> Key Pagination
-    last_key keys = 
-      let (last_key:_) = Import.reverse keys -- FIXME - awful awful
-      in  last_key
-
-processFile :: MVar FirstKey -> 
-               MVar PrevKey  ->
-               Text          -> 
-               ReaderT SqlBackend (NoLoggingT (ResourceT IO)) (Key Pagination)
-processFile first prev b_record' = do
-  first_empty <- isEmptyMVar first
-  repsert (business_key) business 
-  _ <- case first_empty of
-         True  -> do
-                   putMVar first business_key 
-                   putMVar prev  (Just business_key)
-                   _ <- repsert pagination_key $ makePaginationFirst
-                   return ()
-         False -> do
-                   first_key <- readMVar first
-                   prev_key  <- readMVar prev
-                   _ <- repsert pagination_key $
-                        makePagination first_key prev_key
-                   popNextField prev_key business_key
-                   swapMVar prev (Just business_key)
-                   return ()
-  return (pagination_key)
-  where
-    (business:_) = 
-      makeBRecord (BS.fromStrict (UTF8.fromString (unpack b_record')))
-    b_record@(id',_) = breakOn "," b_record'
-    business_key   = toSqlKey (keyValue id') :: Key Businesses
-    pagination_key = toSqlKey (keyValue id') :: Key Pagination
-    makePagination first_key prev_key = 
-      Pagination business_key first_key prev_key Nothing Nothing 
-    makePaginationFirst = 
-      Pagination business_key business_key Nothing Nothing Nothing
-
-processFileLast :: Key Pagination -> 
-                   Key Pagination ->
-                   ReaderT SqlBackend (NoLoggingT (ResourceT IO)) ()
-processFileLast last_key current_key = do
-  last_key_pagination' <- last_key_pagination
-  update current_key [PaginationLast =. (Just last_key_pagination')]
-  return ()
-  where
-    last_key_pagination = do
-      maybe_key <- get last_key
-      case (maybe_key) of
-        Just (Pagination self _ _ _ _) -> return self
-        Nothing                        -> error err_msg
-    err_msg = 
-      "Hard Fail: While trying to populate \"last\" field " ++
-      "failed to find " ++ (show last_key)   
-  
-
-makeBRecord :: BS.ByteString -> [Businesses]
-makeBRecord b_record = 
-  case (CSV.decode CSV.NoHeader b_record :: Either String (Vector Businesses)) of
-    Left err_msg -> error err_msg
-    Right b_record -> Vector.toList b_record
-  
-popNextField :: PrevKey     ->
-                BusinessKey ->
-                ReaderT SqlBackend (NoLoggingT (ResourceT IO)) () 
-popNextField Nothing current_key = error err_msg
-  where 
-    current_id = show (fromSqlKey current_key)
-    err_msg    =
-      "Hard Fail: " ++ current_id ++
-      " failed to populate previous record's next field -- MVar empty"
-popNextField (Just prev_key) current_key = do
-  maybePaginateKey <- getBy $ UniqueBusinessesId prev_key
-  case (maybePaginateKey) of
-    Nothing -> error not_found
-    Just (Entity prev_key' _) -> 
-      update prev_key' [PaginationNext =. (Just current_key)] 
-  where
-    key_value = show (fromSqlKey prev_key)
-    not_found = 
-      "Hard Fail: " ++ key_value                ++ 
-      " failed to be found in Pagination table" ++
-      "while trying to populate next field"
-
-keyValue :: Text -> Int64
-keyValue str_int = fromIntegral toInteger :: Int64
-  where
-    toInteger =
-      case (readEither (unpack str_int) :: Either String Integer) of
-        (Left err_msg) -> error ("Hard Fail key value : " ++ " " ++ (unpack str_int) ++ err_msg)
-        (Right int)    -> int
-  
 makeApplication :: App -> IO Application
 makeApplication foundation = do
     logWare <- makeLogWare foundation
