@@ -23,7 +23,7 @@ before_install:
   - export PATH=~/.local/bin:$PATH
   - travis_retry curl -L https://www.stackage.org/stack/linux-x86_64 | tar xz --wildcards --strip-components=1 -C ~/.local/bin '*/stack'
   - chmod a+x ~/.local/bin/stack
-  - psql -c 'create database ol;' -U postgres
+  - psql -c 'create database ol_db;' -U postgres
 install:
   - stack +RTS -N2 -RTS setup 
   - stack +RTS -N2 -RTS build 
