@@ -1,7 +1,8 @@
 # http://docs.haskellstack.org/en/stable/travis_ci.html
 
 language: haskell
-
+services:
+  - postgresql
 branches:
   only:
     - master
