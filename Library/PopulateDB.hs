@@ -33,8 +33,8 @@ popDB appSettings = do
  (_:businesses) <- lines <$> readFile "engineering_project_businesses.csv" :: IO [Text]
  runStdoutLoggingT $ withPostgresqlPool connStr 10 $ \pool ->
    liftIO $ flip runSqlPersistMPool pool $ do
---     keys' <- mapM (processFile first prev) businesses
---     mapM_ (processFileLast (final_key keys')) keys'
+     keys' <- mapM (processFile first prev) businesses
+     mapM_ (processFileLast (final_key keys')) keys'
      return ()
   where
     connStr  = pgConnStr $ appDatabaseConf appSettings
