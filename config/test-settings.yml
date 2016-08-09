@@ -7,3 +7,6 @@ database:
   #
   #   database: "_env:PGDATABASE:ol_LOWER_test"
   database: "ol_db"
+
+  detailed-logging: false
+  should-log-all: false

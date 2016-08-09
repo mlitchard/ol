@@ -42,12 +42,12 @@ data AppSettings = AppSettings
 
 instance FromJSON AppSettings where
     parseJSON = withObject "AppSettings" $ \o -> do
-        let defaultDev =
-#if DEVELOPMENT
-                True
-#else
-                False
-#endif
+        let defaultDev = False
+-- #if DEVELOPMENT
+--                True
+-- #else
+--                False
+-- #endif
         appDatabaseConf           <- o .: "database"
         appRoot                   <- o .:? "approot"
         appHost                   <- fromString <$> o .: "host"
@@ -55,9 +55,9 @@ instance FromJSON AppSettings where
         appIpFromHeader           <- o .: "ip-from-header"
 
         appDetailedRequestLogging <- o .:? 
-          "detailed-logging" .!= defaultDev
+          "detailed-logging" .!= False
         appShouldLogAll           <- o .:? 
-          "should-log-all"   .!= defaultDev
+          "should-log-all"   .!= False
         return AppSettings {..}
 
 -- The rest of this file contains settings which rarely need changing by a

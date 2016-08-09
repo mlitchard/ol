@@ -14,7 +14,10 @@ module Application
     , db
     ) where
 
-import Control.Monad.Logger                 ( liftLoc, runLoggingT)
+import Control.Monad.Logger                 ( liftLoc 
+                                            , runLoggingT
+                                            , runNoLoggingT
+                                            , runStderrLoggingT)
 import Database.Persist.Postgresql          ( createPostgresqlPool
                                             , pgConnStr, pgPoolSize, runSqlPool)
 import Import hiding (unlines,unpack,pack,first,toInteger) 
@@ -69,12 +72,12 @@ makeFoundation appSettings = do
         logFunc = messageLoggerSource tempFoundation appLogger
 
     -- Create the database connection pool
-    pool <- flip runLoggingT logFunc $ createPostgresqlPool
+    pool <- runStderrLoggingT $ flip runLoggingT logFunc $ createPostgresqlPool
         (pgConnStr  $ appDatabaseConf appSettings)
         (pgPoolSize $ appDatabaseConf appSettings)
 
     -- Perform database migration using our application's logging settings.
-    runLoggingT (runSqlPool (runMigration migrateAll) pool) logFunc
+    runStderrLoggingT $ runLoggingT (runSqlPool (runMigration migrateAll) pool) logFunc
     popDB appSettings
     -- Return the foundation
     return $ mkFoundation pool

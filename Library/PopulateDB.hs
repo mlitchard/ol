@@ -4,7 +4,7 @@ import Database.Persist.Postgresql          ( withPostgresqlPool
                                             , runSqlPersistMPool
                                             , pgConnStr) 
 import Database.Persist.Sql (toSqlKey, fromSqlKey)
-import Control.Monad.Logger (runStdoutLoggingT, NoLoggingT)
+import Control.Monad.Logger (runStdoutLoggingT, NoLoggingT,runNoLoggingT)
 
 import Text.Read (readEither)
 
@@ -31,7 +31,8 @@ popDB appSettings = do
  prev  <- newEmptyMVar :: IO (MVar PrevKey)
 
  (_:businesses) <- lines <$> readFile "engineering_project_businesses.csv" :: IO [Text]
- runStdoutLoggingT $ withPostgresqlPool connStr 10 $ \pool ->
+-- runStdoutLoggingT $ withPostgresqlPool connStr 10 $ \pool ->
+ runNoLoggingT $ withPostgresqlPool connStr 10 $ \pool ->
    liftIO $ flip runSqlPersistMPool pool $ do
      keys' <- mapM (processFile first prev) businesses
      mapM_ (processFileLast (final_key keys')) keys'
