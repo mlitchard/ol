@@ -30,7 +30,7 @@ withApp = before $ do
         []
         ignoreEnv
     foundation <- makeFoundation settings
-    wipeDB foundation
+--    wipeDB foundation
     logWare <- liftIO $ makeLogWare foundation
     return (foundation, logWare)
 

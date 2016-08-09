@@ -133,6 +133,9 @@ test-suite test
                  , shakespeare
                  , transformers
                  , hspec >= 2.0.0
+                 , unordered-containers == 0.2.7.1
                  , classy-prelude
                  , classy-prelude-yesod
                  , aeson
+                 , wai-extra
+                 , vector == 0.11.0.0

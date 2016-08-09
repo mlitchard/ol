@@ -2,54 +2,37 @@
 module Handler.ListBusinesses where
 
 import Import hiding (fromList,pack)
+import Safe
 import Text.Read (readEither)
 import Data.Either.Utils (maybeToEither)
-import Data.Maybe (fromJust) -- alert alert FIXME
 import Data.HashMap.Strict hiding (map)
 import Data.Text (pack)
 import Data.Aeson 
--- import Data.Text.Encoding
+import BusinessTypes
 import Database.Persist.Sql (toSqlKey,fromSqlKey)
-
-data LinkUrls = LinkUrls
-  { self  :: Text
-  , first :: Text
-  , prev  :: Text
-  , next  :: Text
-  , last  :: Text
-  } deriving (Generic,Show)
-
-type LinkMap = [(LinkId, LinkUrls)]
-type PageNumber = Int
-type PageSize   = Int
-type PageNumber64 = Int64
-type PageSize64   = Int64
-type KeyVal       = Int64
-type Host       = Text
-newtype LinkId = LinkId {linkID :: Int64} deriving (Eq,Ord,Generic,Hashable)
-instance ToJSON LinkId
-instance ToJSON LinkUrls
-
 
 getListBusinessesR :: Handler (Value)
 getListBusinessesR =  do
   page_number' <- lookupGetParams "page[number]"
   page_size'   <- lookupGetParams "page[size]"
   host'        <- lookupHeader "Host" -- FIXME
-  let host = decodeUtf8 (fromMaybe host_err host') 
+  let host = decodeUtf8 (fromMaybe host_default host') 
   -- ^^ Just "localhost:3000"
 
   pages <- getPage (page_number page_number') (page_size page_size')
   meta  <- getMeta (page_number page_number') (page_size page_size') host 
   return $ object [("businesses" ,toJSON pages),("meta", toJSON meta)]
   where
-    host_err = "Host Not Found In Header"
+    host_default = "localhost"
     page_number pn = case pn of
-      []      -> error ("JSON error to be implemented")
+      []      -> error page_number_err
       (pn':_) -> fromText pn'
     page_size ps   = case ps of
       []      -> 50 :: Int
       (ps':_) -> fromText ps'
+    page_number_err = 
+     "You need to pass a page number as GET parameter." ++ 
+     "For example: page[number]=3"
       
 getPage :: PageNumber -> PageSize -> Handler [Businesses]
 getPage page_number page_size = do
@@ -64,10 +47,12 @@ getPage page_number page_size = do
 
 getMeta :: PageNumber -> PageSize -> Host -> Handler LinkMap
 getMeta page_number' page_size' host = do
-  meta@(fp:_) <- runDB $ do select_range
-  return $ 
-    map (toLinks lb_key' ub_key' (finalKey fp) page_number page_size host) $
-    map entityVal meta
+  meta <- runDB $ do select_range
+  case meta of
+    [] -> notFound 
+    (fp:_) -> return $
+      map (toLinks lb_key' ub_key' (finalKey fp) page_number page_size host) $
+      map entityVal meta
   where
     lb_key' = ((page_number - 1) * page_size)
     lb_key  = toSqlKey lb_key' :: Key Pagination
@@ -94,12 +79,12 @@ toLinks lb_key ub_key final_key page_number' page_size' host (Pagination self fi
     self'  = link page_number' 
     first' = link 1 
     prev'  = 
-      let pn = if ((fromSqlKey (fromJust prev)) < lb_key) 
+      let pn = if ((fromSqlKey (fromJustNote prev_err prev)) < lb_key) 
                then (page_number' - 1) 
                else page_number'
       in link pn 
     next'  = 
-      let pn = if ((fromSqlKey (fromJust next)) > ub_key)
+      let pn = if ((fromSqlKey (fromJustNote next_err next)) > ub_key)
                then (page_number' + 1)
                else page_number'
       in link pn
@@ -114,9 +99,14 @@ toLinks lb_key ub_key final_key page_number' page_size' host (Pagination self fi
       (pack $ show pn)            ++
       "&page[size]="              ++
       (pack $ show page_size')
+    prev_err = "Could not find previous key for key " ++ (show sid)
+    next_err = "Could not find next key for key " ++ (show sid)
 -- goes in own module
 finalKey :: Entity Pagination -> Int64
-finalKey fp = fromSqlKey (fromJust $ paginationLast (entityVal fp))
+finalKey fp = 
+  fromSqlKey (fromJustNote page_last_err $ paginationLast (entityVal fp))
+  where
+    page_last_err = "404 final key not found"
 
 fromText :: Text -> Int
 fromText str_int = toInteger :: Int

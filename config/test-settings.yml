@@ -6,4 +6,4 @@ database:
   # something like:
   #
   #   database: "_env:PGDATABASE:ol_LOWER_test"
-  database: ol_LOWER_test
+  database: "ol_db"
