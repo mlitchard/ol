@@ -1,3 +1,7 @@
+{- module Handler.Business
+   handles request for single business data
+-}
+
 module Handler.Business where
 
 import Import

@@ -1,23 +1,27 @@
 {-# LANGUAGE OverloadedStrings, DeriveGeneric #-}
+{- module: Handler.ListBusinesses
+   handles multiple business listings
+-}
 module Handler.ListBusinesses where
 
-import Import hiding (fromList,pack)
 import Safe
 import Text.Read (readEither)
-import Data.Either.Utils (maybeToEither)
-import Data.HashMap.Strict hiding (map)
 import Data.Text (pack)
-import Data.Aeson 
-import BusinessTypes
 import Database.Persist.Sql (toSqlKey,fromSqlKey)
+
+import Import hiding (fromList,pack,toInteger)
+import BusinessTypes
+
+-- | getListBusinessesR
+-- gets initial input
+-- and returns processed output
 
 getListBusinessesR :: Handler (Value)
 getListBusinessesR =  do
   page_number' <- lookupGetParams "page[number]"
   page_size'   <- lookupGetParams "page[size]"
-  host'        <- lookupHeader "Host" -- FIXME
+  host'        <- lookupHeader "Host" 
   let host = decodeUtf8 (fromMaybe host_default host') 
-  -- ^^ Just "localhost:3000"
 
   pages <- getPage (page_number page_number') (page_size page_size')
   meta  <- getMeta (page_number page_number') (page_size page_size') host 
@@ -33,7 +37,9 @@ getListBusinessesR =  do
     page_number_err = 
      "You need to pass a page number as GET parameter." ++ 
      "For example: page[number]=3"
-      
+
+-- | getPage 
+--   database query retriving list of usinesses value    
 getPage :: PageNumber -> PageSize -> Handler [Businesses]
 getPage page_number page_size = do
   pages <- runDB $ do select_range
@@ -45,6 +51,8 @@ getPage page_number page_size = do
     lb_key = ((page_number - 1) * page_size)
     ub_key  = (lb_key + (page_size - 1)) 
 
+-- | getMeta
+--   DB query for LinkMap
 getMeta :: PageNumber -> PageSize -> Host -> Handler LinkMap
 getMeta page_number' page_size' host = do
   meta <- runDB $ do select_range
@@ -64,6 +72,8 @@ getMeta page_number' page_size' host = do
       selectList 
         [PaginationId >=. lb_key, PaginationId <=. ub_key] [LimitTo page_size']
 
+-- | toLinks
+-- creates LinkId LinkUrls pairs
 toLinks :: KeyVal           ->
            KeyVal           ->
            KeyVal           ->
@@ -72,7 +82,7 @@ toLinks :: KeyVal           ->
            Host             ->
            Pagination       ->
            (LinkId,LinkUrls)
-toLinks lb_key ub_key final_key page_number' page_size' host (Pagination self first prev next last) = 
+toLinks lb_key ub_key final_key page_number' page_size' host (Pagination self _ prev next _) = 
   (LinkId sid,(LinkUrls self' first' prev' next' last'))
   where
     sid = fromSqlKey self
@@ -91,7 +101,7 @@ toLinks lb_key ub_key final_key page_number' page_size' host (Pagination self fi
     last' =
       let pn = final_key `div` page_size' + (final_key `mod` page_size')
       in link pn
-    page_number   = fromIntegral page_number' :: Int64
+--    page_number   = fromIntegral page_number' :: Int64
     link pn = 
       "http://"                   ++ 
       host                        ++

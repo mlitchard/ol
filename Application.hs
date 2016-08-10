@@ -16,16 +16,15 @@ module Application
 
 import Control.Monad.Logger                 ( liftLoc 
                                             , runLoggingT
-                                            , runNoLoggingT
                                             , runStderrLoggingT)
 import Database.Persist.Postgresql          ( createPostgresqlPool
                                             , pgConnStr, pgPoolSize, runSqlPool)
 import Import hiding (unlines,unpack,pack,first,toInteger) 
 
--- import System.IO (readFile)
--- import Data.List.Split (splitOn)
 import Language.Haskell.TH.Syntax           (qLocation)
 import Network.Wai (Middleware)
+import Network.Wai.Middleware.Cors          (simpleCors)
+
 import Network.Wai.Handler.Warp             (Settings, defaultSettings,
                                              defaultShouldDisplayException,
                                              runSettings, setHost,
@@ -82,13 +81,15 @@ makeFoundation appSettings = do
     -- Return the foundation
     return $ mkFoundation pool
 
+-- | This creates the IO action that is the web application
 makeApplication :: App -> IO Application
 makeApplication foundation = do
     logWare <- makeLogWare foundation
     -- Create the WAI application and apply middlewares
     appPlain <- toWaiAppPlain foundation
-    return $ logWare $ defaultMiddlewaresNoLogging appPlain
+    return $ simpleCors $ logWare $ defaultMiddlewaresNoLogging appPlain
 
+-- | Create logging middleware
 makeLogWare :: App -> IO Middleware
 makeLogWare foundation =
     mkRequestLogger def
