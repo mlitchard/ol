@@ -4,5 +4,7 @@ RUN apt-get upgrade && apt-get update
 RUN DEBIAN_FRONTEND=noninteractive apt-get install -yq postgresql-client-9.3 git
 RUN git clone https://github.com/mlitchard/ol.git
 WORKDIR ol
+RUN git checkout master
+RUN git pull
 RUN stack install
 CMD ["/root/.local/bin/ol"]

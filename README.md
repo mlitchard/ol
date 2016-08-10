@@ -22,7 +22,7 @@ cd ol/dockerfiles/yesod
 
 docker build -t yesod_ol .
 
-sudo docker run -ti --net=container:local_db --volumes-from etc-postgres --name ol_app yesod_ol
+sudo docker run -ti --rm --net=container:local_db --volumes-from etc-postgres --name ol_app yesod_ol
 
 In yet another term, you can go ahead and play, for example:
 
