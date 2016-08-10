@@ -3,8 +3,12 @@ ol project
 ==========
 
 #To Use
-git clone
-cd ol/dockerfiles/postgres
+git clone git@github.com:mlitchard/ol.git
+cd ol
+git checkout master
+cd dockerfiles/postgres
+
+Note: You may have to use sudo to execute docker commands
 
 docker build -t postgresql_ol_db .
 
@@ -18,7 +22,7 @@ cd ol/dockerfiles/yesod
 
 docker build -t yesod_ol .
 
-sudo docker run -t --net=container:local_db --volumes-from etc-postgres --name ol_app yesod_ol
+sudo docker run -ti --net=container:local_db --volumes-from etc-postgres --name ol_app yesod_ol
 
 In yet another term, you can go ahead and play, for example:
 

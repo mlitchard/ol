@@ -74,6 +74,7 @@ getMeta page_number' page_size' host = do
 
 -- | toLinks
 -- creates LinkId LinkUrls pairs
+-- prev and next are hackey FIXME
 toLinks :: KeyVal           ->
            KeyVal           ->
            KeyVal           ->
@@ -89,12 +90,12 @@ toLinks lb_key ub_key final_key page_number' page_size' host (Pagination self _ 
     self'  = link page_number' 
     first' = link 1 
     prev'  = 
-      let pn = if ((fromSqlKey (fromJustNote prev_err prev)) < lb_key) 
+      let pn = if ((fromSqlKey (fromJustNote "" prev)) < lb_key) 
                then (page_number' - 1) 
                else page_number'
       in link pn 
     next'  = 
-      let pn = if ((fromSqlKey (fromJustNote next_err next)) > ub_key)
+      let pn = if ((fromSqlKey (fromJustNote "" next)) > ub_key)
                then (page_number' + 1)
                else page_number'
       in link pn
