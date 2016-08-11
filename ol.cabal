@@ -101,6 +101,8 @@ test-suite test
     main-is:           Spec.hs
     other-modules:     TestImport 
                      , ListBusinesses
+                     , Handler.BusinessSpec
+                     , Handler.ListBusinessesSpec
     hs-source-dirs:    test,Handler
     ghc-options:       -Wall -fno-warn-orphans
 

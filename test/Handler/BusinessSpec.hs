@@ -3,12 +3,7 @@ module Handler.BusinessSpec (spec) where
 -- http://localhost:3000/businesses' -d "page[number]=3"
 -- addGetParam :: Text -> Text -> RequestBuilder site ()
 import TestImport hiding (fromList,toList)
-import Data.HashMap.Strict
-import qualified Data.Vector as Vector
 import Network.Wai.Test hiding (request)
-import Data.Aeson
-import Data.Maybe
-import BusinessTypes
 
 spec :: Spec
 spec = withApp $ do
@@ -23,7 +18,7 @@ spec = withApp $ do
         setUrl ("http://localhost:3000/businesses/49999" :: Text)
       resp <- getResponse
       case resp of
-        (Just resp) -> assertEqual "Last Entry" (simpleBody resp) last_entry
+        (Just resp') -> assertEqual "Last Entry" (simpleBody resp') last_entry
         Nothing     -> error "Hard Fail: Could not get last entry"
   describe "Gives 404 when attempting to get non-existent entry" $ do
     it "Evaluates to True" $ do

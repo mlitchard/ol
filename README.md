@@ -29,6 +29,15 @@ In yet another term, you can go ahead and play, for example:
 curl -G 'http://localhost:3000/businesses/1'
 {"next":2,"first":0,"self":1,"last":49999,"id":1,"prev":0}
 
+curl -G 'http://localhost:3000/businesses' -d "page[number]=2" -d "page[size]=1"
+-- You'll have to try it to see --
+
+If you see this error:
+'curl: (56) Recv failure: Connection reset by peer' 
+
+It's not populated the database yet. Give it a sec.
+
+
 You can see Travis CI is passing all tests. If you want to run them yourself, do this:
 
 sudo docker run -t --net=container:local_db --volumes-from etc-postgres --name ol_app yesod_ol bash

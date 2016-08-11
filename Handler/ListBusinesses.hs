@@ -95,9 +95,6 @@ toLinks lb_key ub_key final_key page_number' page_size' host (Pagination self _ 
                        then show (page_number' - 1)
                        else show page_number'
            Nothing  -> "null"
---      let pn = if ((fromSqlKey (fromJustNote "" prev)) < lb_key) 
---               then (page_number' - 1) 
---               else page_number'
       in link pn 
     next'  = 
       let pn = case next of
@@ -105,14 +102,10 @@ toLinks lb_key ub_key final_key page_number' page_size' host (Pagination self _ 
                        then show (page_number' + 1)
                        else show page_number'
            Nothing  -> "null"
---               if ((fromSqlKey (fromJustNote "" next)) > ub_key)
---               then (page_number' + 1)
---               else page_number'
       in link pn
     last' =
       let pn = show (final_key `div` page_size' + (final_key `mod` page_size'))
       in link pn
---    page_number   = fromIntegral page_number' :: Int64
     link pn = 
       "http://"                   ++ 
       host                        ++
