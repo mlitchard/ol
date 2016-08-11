@@ -87,31 +87,39 @@ toLinks lb_key ub_key final_key page_number' page_size' host (Pagination self _ 
   (LinkId sid,(LinkUrls self' first' prev' next' last'))
   where
     sid = fromSqlKey self
-    self'  = link page_number' 
-    first' = link 1 
-    prev'  = 
-      let pn = if ((fromSqlKey (fromJustNote "" prev)) < lb_key) 
-               then (page_number' - 1) 
-               else page_number'
+    self'  = link (show page_number') 
+    first' = link (show (1 :: Int)) 
+    prev'  =
+      let pn = case prev of
+           Just num -> if (fromSqlKey num) < lb_key
+                       then show (page_number' - 1)
+                       else show page_number'
+           Nothing  -> "null"
+--      let pn = if ((fromSqlKey (fromJustNote "" prev)) < lb_key) 
+--               then (page_number' - 1) 
+--               else page_number'
       in link pn 
     next'  = 
-      let pn = if ((fromSqlKey (fromJustNote "" next)) > ub_key)
-               then (page_number' + 1)
-               else page_number'
+      let pn = case next of
+           Just num -> if (fromSqlKey num) > ub_key
+                       then show (page_number' + 1)
+                       else show page_number'
+           Nothing  -> "null"
+--               if ((fromSqlKey (fromJustNote "" next)) > ub_key)
+--               then (page_number' + 1)
+--               else page_number'
       in link pn
     last' =
-      let pn = final_key `div` page_size' + (final_key `mod` page_size')
+      let pn = show (final_key `div` page_size' + (final_key `mod` page_size'))
       in link pn
 --    page_number   = fromIntegral page_number' :: Int64
     link pn = 
       "http://"                   ++ 
       host                        ++
       "/businesses?page[number]=" ++ 
-      (pack $ show pn)            ++
+      (pack pn)                   ++
       "&page[size]="              ++
       (pack $ show page_size')
-    prev_err = "Could not find previous key for key " ++ (show sid)
-    next_err = "Could not find next key for key " ++ (show sid)
 -- goes in own module
 finalKey :: Entity Pagination -> Int64
 finalKey fp = 
