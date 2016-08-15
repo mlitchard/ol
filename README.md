@@ -4,8 +4,11 @@ ol project
 
 #To Use
 git clone git@github.com:mlitchard/ol.git
+
 cd ol
+
 git checkout master
+
 cd dockerfiles/postgres
 
 Note: You may have to use sudo to execute docker commands
